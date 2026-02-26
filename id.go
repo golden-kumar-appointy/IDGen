@@ -1,13 +1,10 @@
 package idgen
 
 import (
+	crand "crypto/rand"
 	"errors"
-	"io"
-	"math"
-	"math/rand"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/oklog/ulid"
 )
@@ -20,33 +17,21 @@ const (
 	SeparatorString = string(SeparatorByte)
 )
 
+// ErrMalformed represents and error that is returned in case of malformed ulids
+var ErrMalformed = errors.New("idgen: malformed ulid")
+
 var (
-	// ErrMalformed represents and error that is returned in case of malformed ulids
-	ErrMalformed = errors.New("idgen: malformed ulid")
+	globalEntropy = ulid.Monotonic(crand.Reader, 0)
+	entropyMu     sync.Mutex
 )
 
 // New generates a lexically sorted, url safe Id with a prefix.
 // Eg: cus_JSfjkdjf333j46, i.e. {prefix}_{ulid}
 func New(prefix string) string {
-	ent := getEntropy()
-	res := prefix + SeparatorString + ulid.MustNew(ulid.Now(), ent).String()
-	putEntropy(ent)
+	entropyMu.Lock()
+	res := prefix + SeparatorString + ulid.MustNew(ulid.Now(), globalEntropy).String()
+	entropyMu.Unlock()
 	return res
-}
-
-var entropyPool = sync.Pool{
-	New: func() interface{} {
-		ns := time.Now().UnixNano()
-		return ulid.Monotonic(rand.New(rand.NewSource(ns)), uint64(ns)%math.MaxUint32)
-	},
-}
-
-func getEntropy() io.Reader {
-	return entropyPool.Get().(io.Reader)
-}
-
-func putEntropy(r io.Reader) {
-	entropyPool.Put(r)
 }
 
 // Generator generates ids with the provided prefix
